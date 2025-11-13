@@ -133,3 +133,6 @@ The project includes:
 ## Testing & Validation
 
 The project includes test index files (test_index_*.*) that demonstrate the expected output format and can be used for validation. The example_document.txt serves as a sample input for testing the functionality.
+
+## Qwen Added Memories
+- PROD1

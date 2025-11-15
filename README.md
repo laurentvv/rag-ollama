@@ -15,6 +15,35 @@ This tool provides three main commands:
 - Ollama running locally
 - Required models: `nomic-embed-text` (for embeddings) and a LLM like `llama3.2`
 
+## Prerequisites
+
+### Tesseract-OCR (for Document Preprocessing)
+
+The `prepare_documents.py` script uses `docling` with an OCR (Optical Character Recognition) feature to extract text from images and screenshots within your documents. This requires the Tesseract-OCR engine to be installed on your system.
+
+**Please install Tesseract-OCR before running `prepare_documents.py`.**
+
+#### Installation Instructions:
+
+*   **Windows**:
+    *   Download the official installer from the [Tesseract at UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki) repository.
+    *   During installation, ensure you select the option to **"Add Tesseract to the system PATH"**.
+
+*   **Linux (Debian/Ubuntu)**:
+    ```bash
+    sudo apt-get update
+    sudo apt-get install tesseract-ocr
+    # Install language packs if needed (e.g., for French)
+    sudo apt-get install tesseract-ocr-fra
+    ```
+
+*   **macOS (via Homebrew)**:
+    ```bash
+    brew install tesseract
+    ```
+
+To verify the installation, open a new terminal and run `tesseract --version`. If it shows the version number, you are all set.
+
 ## Installation
 
 1. **Install Ollama** from [ollama.com](https://ollama.com)

@@ -46,6 +46,26 @@ def ingest_documents():
     print(f"Divisé en {len(chunks)} chunks.")
     return chunks
 
+def full_text_search(query, chunks, top_k=2):
+    """
+    Effectue une recherche plein texte simple sur les chunks.
+    """
+    results = []
+    for chunk in chunks:
+        score = 0
+        # Compte les occurrences de chaque mot de la query dans le contenu du chunk
+        for word in query.lower().split():
+            score += chunk.page_content.lower().count(word)
+
+        if score > 0:
+            results.append({"chunk": chunk, "score": score})
+
+    # Trie les résultats par score décroissant et retourne le top_k
+    sorted_results = sorted(results, key=lambda x: x["score"], reverse=True)
+    # Retourne uniquement les chunks
+    return [res["chunk"] for res in sorted_results[:top_k]]
+
+
 # --- 2. Création ou Chargement de la Base de Données Vectorielle ---
 def setup_vector_db(chunks):
     print("Initialisation du modèle d'embeddings...")
@@ -71,7 +91,7 @@ def setup_vector_db(chunks):
     return vector_db
 
 # --- 3. Configuration du RAG Chain ---
-def setup_rag_chain(vector_db):
+def setup_rag_chain(vector_db, chunks):
     print(f"Configuration du modèle Ollama: {OLLAMA_MODEL}...")
     llm = Ollama(model=OLLAMA_MODEL)
 
@@ -88,12 +108,9 @@ def setup_rag_chain(vector_db):
     document_chain = create_stuff_documents_chain(llm, prompt)
 
     # Crée le retriever à partir de la base de données vectorielle
-    retriever = vector_db.as_retriever()
+    retriever = vector_db.as_retriever(search_kwargs={"k": 3})
 
-    # Crée la chaîne de récupération et de génération (RAG)
-    rag_chain = create_retrieval_chain(retriever, document_chain)
-
-    return rag_chain
+    return document_chain, retriever
 
 # --- Fonction principale ---
 def main():
@@ -102,7 +119,7 @@ def main():
         return # Arrête si aucun document n'a été chargé
 
     vector_db = setup_vector_db(chunks)
-    rag_chain = setup_rag_chain(vector_db)
+    document_chain, retriever = setup_rag_chain(vector_db, chunks)
 
     print("\n--- Prêt à interagir avec le RAG ---")
     print(f"Modèle Ollama: {OLLAMA_MODEL}")
@@ -116,14 +133,31 @@ def main():
 
         print("Recherche de réponse...")
         try:
-            # Invocation de la chaîne RAG avec la question
-            response = rag_chain.invoke({"input": question})
+            # 1. Vector search
+            vector_results = retriever.get_relevant_documents(question)
+
+            # 2. Full-text search
+            full_text_results = full_text_search(question, chunks, top_k=2)
+
+            # 3. Combine and deduplicate results
+            combined_results = vector_results + full_text_results
+            unique_results = []
+            seen_content = set()
+            for doc in combined_results:
+                if doc.page_content not in seen_content:
+                    unique_results.append(doc)
+                    seen_content.add(doc.page_content)
+
+            # 4. Invoke RAG chain with combined context
+            response = document_chain.invoke({"input": question, "context": unique_results})
             print("\nRéponse:")
-            print(response["answer"])
-            # Pour voir les sources récupérées (les chunks qui ont servi à la réponse)
+            print(response)
+
+            # Pour voir les sources récupérées
             # print("\nSources utilisées:")
-            # for doc in response["context"]:
-            #     print(f"- {doc.metadata.get('source', 'Inconnu')}")
+            # for doc in unique_results:
+            #      print(f"- {doc.metadata.get('source', 'Inconnu')}")
+
 
         except Exception as e:
             print(f"Une erreur est survenue: {e}")

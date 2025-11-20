@@ -136,35 +136,6 @@ rag-prepare --input "C:\MyDocs" --output "./processed_md" --vision-model "llama-
 4.  Start the local server on port **1234**.
     *   Ensure "Cross-Origin-Resource-Sharing (CORS)" is enabled (usually on by default).
 
-## 🛠️ How It Works
-
-```mermaid
-graph TD
-    subgraph "Document Ingestion"
-        A[Source Docs] --> B{File Type?}
-        B -- PDF --> C[pdf-ocr-ai (VLM)]
-        B -- Image --> C
-        B -- DOCX/PPTX --> D{Has Images?}
-        D -- Yes --> E[Docling (Full OCR)]
-        D -- No --> F[Docling (Fast)]
-        C --> G[Markdown]
-        E --> G
-        F --> G
-    end
-
-    subgraph "RAG Pipeline"
-        G --> H[Chunking]
-        H --> I[Vector Store (Chroma)]
-        H --> J[BM25 Index]
-        K[User Query] --> L{Hybrid Retriever}
-        I --> L
-        J --> L
-        L --> M[Context]
-        M --> N[LLM (Ollama)]
-        N --> O[Answer]
-    end
-```
-
 ## 📂 Project Structure
 
 *   `src/rag_ollama/`: Source code.

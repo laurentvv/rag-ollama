@@ -1,237 +1,153 @@
-# Simple Ollama CLI
+# 🧠 RAG-Ollama
 
-A minimal implementation for indexing, searching, and asking with Ollama integration, based on LEANN concepts but greatly simplified.
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
+![Ollama](https://img.shields.io/badge/Ollama-Integrated-orange)
+![LangChain](https://img.shields.io/badge/LangChain-Powered-green)
+![License](https://img.shields.io/badge/License-MIT-purple)
 
-## Overview
+**Advanced Local RAG system with AI-Powered OCR and Hybrid Search.**
+*Powered by Ollama, ChromaDB, and Vision Language Models.*
 
-This tool provides three main commands:
-- `build`: Create an embedding index from text or files
-- `search`: Perform semantic search in the index
-- `ask`: Ask questions about indexed content using a language model
+## ✨ Features
 
-## Requirements
+- **🤖 Fully Local**: Runs entirely on your machine using Ollama and local embeddings.
+- **👁️ Smart AI OCR**: Automatically detects images in documents and uses **Vision Language Models** (via `pdf-ocr-ai` logic) to describe screenshots and diagrams.
+- **🖼️ Image Support**: Directly processes image files (`.jpg`, `.png`, etc.) using local VLMs.
+- **🔍 Hybrid Search**: Combines semantic vector search (ChromaDB) with keyword-based search (BM25) for superior retrieval accuracy.
+- **📄 Multi-Format Support**: Handles PDF, DOCX, PPTX, Images, and Markdown files with intelligent routing.
+- **⚡ Modern Tooling**: Uses `uv` for fast dependency management and script execution.
 
-- Python 3.7+
-- Ollama running locally
-- Required models: `nomic-embed-text` (for embeddings) and a LLM like `llama3.2`
+## 📋 Prerequisites
 
-## Installation
+Before you begin, ensure you have the following installed:
 
-1. **Install Ollama** from [ollama.com](https://ollama.com)
+*   **[uv](https://github.com/astral-sh/uv)**: Fast Python package installer and resolver.
+*   **[Ollama](https://ollama.com/)**: Running locally for LLM and Embeddings.
+*   **[LM Studio](https://lmstudio.ai/)**: Required for AI OCR/Image processing (Vision models).
 
-2. **Pull required models**:
-   ```bash
-   ollama pull nomic-embed-text  # for embeddings (required)
-   ollama pull llama3.2:1b       # for question answering (lightweight, recommended)
-   # OR
-   ollama pull llama3.2          # for question answering (larger, more capable)
-   ```
+## 🚀 Workflow (Quick Start)
 
-3. **Install Python dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+You don't need to install anything! Just ensure you have the **Prerequisites** ready, then follow these steps using `uvx`.
 
-## Usage
+### 1️⃣ Step 1: Prepare Documents
+Convert your source documents (PDF, Images, DOCX) into a clean Markdown format.
 
-### Build an Index
-
-Create an index from direct text:
 ```bash
-python simple_ollama_cli.py build my_index.leann --text "Paris is the capital of France. Tokyo is the capital of Japan."
+# Process all documents in the source directory
+uvx --from git+https://github.com/laurentvv/rag-ollama rag-prepare --input "C:\MyDocs" --output "./processed_md"
 ```
 
-Or build from a file:
+### 2️⃣ Step 2: Chat & Index
+Start the chat interface. It will automatically index new files and let you ask questions.
+
 ```bash
-python simple_ollama_cli.py build my_index.leann --file document.txt
+uvx --from git+https://github.com/laurentvv/rag-ollama rag-ollama --input "./processed_md" --db "./chroma_db"
 ```
 
-The tool now supports multiple document formats including:
-- Text files (.txt)
-- Markdown files (.md)
-- PDF files (.pdf)
-- Microsoft Word documents (.docx)
+### ⚡ Quick Add (Single File)
+To add a single document without reprocessing everything:
 
-Or build from a directory (recursively indexes all .txt, .md, .pdf, .docx files):
 ```bash
-python simple_ollama_cli.py build my_index.leann --directory /path/to/documents/
+uvx --from git+https://github.com/laurentvv/rag-ollama rag-add "C:\MyDocs\new_file.pdf" --source-dir "C:\MyDocs" --processed-dir "./processed_md" --db "./chroma_db"
 ```
 
-You can specify custom models:
+---
+
+## 📖 Command Reference
+
+### `rag-prepare` (Document Preparation)
+Converts documents to Markdown.
+*   `--input <dir>` (Required): Source directory containing documents (PDF, Images, DOCX).
+*   `--output <dir>` (Required): Output directory for processed Markdown files.
+*   `--vision-model <name>`: Vision model to use in LM Studio (default: `qwen2-vl-7b-instruct`).
+*   `--pdf-provider <name>`: Provider for PDF OCR (default: `lm-studio`).
+*   `--pdf-model <name>`: Model for PDF OCR (default: `qwen/qwen3-vl-30b`).
+
+### `rag-chat` (Chat & Index)
+Starts the RAG interface.
+*   `--input <dir>` (Required): Directory containing processed Markdown files.
+*   `--db <dir>` (Required): Path to ChromaDB directory.
+*   `--index-only`: Run indexing only and exit.
+*   `--model <name>`: Ollama LLM model name (default: `gemma3:12b`).
+*   `--embedding-model <name>`: Ollama embedding model name (default: `embeddinggemma:latest`).
+
+### `rag-add` (Add Single Document)
+Adds, processes, and indexes a single file.
+*   `file_path`: Path to the file to add.
+*   `--source-dir <dir>` (Required): Directory where the file will be copied.
+*   `--processed-dir <dir>`: Output directory for Markdown (default: `./processed_md`).
+*   `--db <dir>`: Path to ChromaDB directory (default: `./chroma_db`).
+
+---
+
+## 💾 Permanent Installation (Optional)
+
+If you use this tool frequently, install it globally:
+
 ```bash
-python simple_ollama_cli.py build my_index.leann --file document.txt --embedding-model nomic-embed-text
+uv tool install git+https://github.com/laurentvv/rag-ollama
 ```
 
-### Search in an Index
+Now you can run commands directly:
 
-Search for content in your index:
+**Prepare:**
 ```bash
-python simple_ollama_cli.py search my_index.leann "European capitals"
+rag-prepare --input "C:\MyDocs" --output "./processed_md"
 ```
 
-Customize search parameters:
+**Chat:**
 ```bash
-python simple_ollama_cli.py search my_index.leann "European capitals" --top-k 3 --embedding-model nomic-embed-text
+rag-chat --input "./processed_md" --db "./chroma_db"
 ```
 
-### Ask Questions
-
-Ask questions about indexed content:
+**Add Document:**
 ```bash
-python simple_ollama_cli.py ask my_index.leann "What are European capitals?" --llm-model llama3.2:1b
+rag-add "C:\MyDocs\new.pdf" --source-dir "C:\MyDocs"
 ```
 
-Customize both models:
+## 🤖 Model Configuration
+
+### Ollama Models
+By default, the system uses `gemma3:12b` and `embeddinggemma:latest`. You can change this via arguments:
 ```bash
-python simple_ollama_cli.py ask my_index.leann "What are European capitals?" \
-  --llm-model llama3.2:1b \
-  --embedding-model nomic-embed-text
+rag-chat --input "./processed_md" --db "./chroma_db" --model "llama3" --embedding-model "nomic-embed-text"
 ```
 
-## Command Reference
+### LM Studio (Vision)
+By default, the system uses `qwen2-vl-7b-instruct` for image analysis. You can change this during preparation:
+```bash
+rag-prepare --input "C:\MyDocs" --output "./processed_md" --vision-model "llama-3.2-vision"
+```
 
-### `build` command options:
-- `index_path`: Path to save the index (required)
-- `--text`: Direct text to index
-- `--file`: File to index
-- `--directory`: Directory to index (recursively searches for .txt, .md, .pdf, .docx files)
-- `--embedding-model`: Ollama embedding model to use (default: nomic-embed-text)
-- `--chunk-size`: Chunk size for text splitting (default: 512)
+## 🤖 Setup AI Providers
 
-### `search` command options:
-- `index_path`: Path to the index (required)
-- `query`: Search query (required)
-- `--top-k`: Number of results to return (default: 5)
-- `--embedding-model`: Ollama embedding model to use (default: nomic-embed-text)
+### Setup Ollama
+1.  Download and install [Ollama](https://ollama.com/).
+2.  Pull the required models:
+    ```bash
+    ollama pull gemma3:12b
+    ollama pull embeddinggemma:latest
+    ```
 
-### `ask` command options:
-- `index_path`: Path to the index (required)
-- `query`: Question to ask (required)
-- `--top-k`: Number of passages to retrieve (default: 5)
-- `--llm-model`: Ollama LLM model to use (default: llama3.2:1b)
-- `--embedding-model`: Ollama embedding model to use (default: nomic-embed-text)
+### Setup LM Studio (for Vision/OCR)
+1.  Download and install [LM Studio](https://lmstudio.ai/).
+2.  Load a Vision model (e.g., `qwen2-vl` or `llama-3.2-vision`).
+3.  Go to the **Developer/Server** tab (double arrow icon).
+4.  Start the local server on port **1234**.
+    *   Ensure "Cross-Origin-Resource-Sharing (CORS)" is enabled (usually on by default).
 
-## Models to Use
+## 📂 Project Structure
 
-### Embedding Models (for `--embedding-model`):
-- `nomic-embed-text` - Fast and efficient (default)
-- `mxbai-embed-large` - High quality
-- `all-minilm` - Good balance of speed and quality
+*   `src/rag_ollama/`: Source code.
+*   `tests/`: Unit and integration tests.
+*   `processed_md/`: Directory containing the generated Markdown files.
+*   `chroma_db/`: Local vector database storage.
+*   `pyproject.toml`: Project configuration and dependencies.
 
-### LLM Models (for `--llm-model`):
-- `llama3.2:1b` - Lightweight, fast (recommended for resource-constrained systems)
-- `llama3.2:3b` - Medium size, balanced performance
-- `llama3.2` - Full size, most capable
-- `mistral` - Alternative option
-- `gemma2` - Google's efficient model
+## 🤝 Contributing
 
-## File Structure
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-After building an index, you'll have these files:
-- `index_name_passages.jsonl` - Contains the indexed passages
-- `index_name_embeddings.pkl` - Contains the computed embeddings
-- `index_name_meta.json` - Contains index metadata
+## 📄 License
 
-## Example Workflow
-
-1. Create an index:
-   ```bash
-   python simple_ollama_cli.py build travel_info.leann --text "Paris is the capital of France and is known for its art and culture. Tokyo is the capital of Japan and is famous for its technology and traditions. Rome is the capital of Italy and is known for its ancient history and architecture."
-   ```
-
-2. Search for information:
-   ```bash
-   python simple_ollama_cli.py search travel_info.leann "European capitals"
-   ```
-
-3. Ask questions:
-   ```bash
-   python simple_ollama_cli.py ask travel_info.leann "What cities are known for their art and culture?" --llm-model llama3.2:1b
-   ```
-
-## Implementation Details
-
-This simplified implementation contains the core functionality of LEANN with Ollama integration:
-
-- **SimpleEmbeddingIndex**: Handles indexing of text, computation of embeddings, and similarity search
-- **SimpleCLI**: Provides the command-line interface for build, search, and ask commands
-- **Ollama Integration**: Uses Ollama for both embedding computation and LLM responses
-- **File-based Storage**: Stores indexed data in JSONL, pickle, and JSON files
-
-The implementation is designed to be:
-- Easy to understand and modify
-- Lightweight with minimal dependencies
-- Compatible with Ollama's API
-
-## How Search and Ask Work
-
-### Search Functionality
-
-The `search` command performs semantic search based on vector similarity:
-
-1. **Query Embedding**: Your search query is converted to an embedding vector using the same model that was used to create the index (default: `nomic-embed-text`)
-2. **Similarity Calculation**: Cosine similarity is computed between your query embedding and all embeddings in the index
-3. **Top-k Retrieval**: The system retrieves the top-k most similar passages (default: 5, customizable with `--top-k`)
-4. **Results**: Results are returned with similarity scores indicating how closely each passage matches your query
-
-The search uses the same embedding model for both indexing and querying to ensure consistency in the vector space.
-
-### Ask Functionality
-
-The `ask` command implements Retrieval-Augmented Generation (RAG) to answer questions:
-
-1. **Retrieval Phase**:
-   - Uses the `search` functionality to find the most relevant passages (default: 5, customizable with `--top-k`)
-   - These passages serve as context for the LLM
-
-2. **Generation Phase**:
-   - Builds a prompt containing the retrieved passages as context
-   - Example prompt structure:
-     ```
-     Based on the following context, please answer the question:
-
-     Context:
-     [Most relevant passages from your documents]
-
-     Question: [Your question]
-
-     Answer:
-     ```
-   - Sends this prompt to the specified LLM (default: `llama3.2:1b`, customizable with `--llm-model`)
-
-3. **Response**: The LLM generates an answer based on the provided context, which is then returned to you
-
-### Understanding Top-k Parameter
-
-The `--top-k` parameter controls how many passages are retrieved and used as context:
-
-- **For search**: Controls how many results are returned
-- **For ask**: Controls how many passages are included in the context prompt
-
-Recommended values:
-- Small models (8k context): `--top-k 3-7`
-- Medium models (32k context, like Qwen3): `--top-k 5-15`
-- Large models (128k+ context): `--top-k 10-20`
-
-Start with the default (5) and adjust based on your needs. More passages provide more context but consume more tokens and may introduce noise.
-
-### Model Usage During Operations
-
-- **Build**: Uses embedding model to convert text to vectors
-- **Search**: Uses the same embedding model to convert your query to a vector and find similar passages
-- **Ask**: Uses both embedding model (for retrieval) and LLM (for generation)
-
-## Dependencies
-
-- `numpy`: For numerical operations
-- `ollama`: For Ollama API integration
-- `tqdm`: For progress bars during embedding computation
-
-## Notes
-
-- The embedding model is used for both indexing (building) and searching
-- Choose embedding models based on your needs for speed vs quality
-- The LLM model is only used for the `ask` command
-- For large documents, the tool automatically chunks text using the `--chunk-size` parameter
-- The search functionality works well even if the LLM functionality has issues
-- Use the smaller `llama3.2:1b` model for better performance on resource-constrained systems
+This project is licensed under the MIT License.

@@ -1,18 +1,20 @@
 import os
 from langchain_community.document_loaders import DirectoryLoader, UnstructuredMarkdownLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceBgeEmbeddings
+from langchain_ollama import OllamaEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_community.llms import Ollama
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_classic.chains.retrieval import create_retrieval_chain
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+from langchain_community.retrievers import BM25Retriever
+from langchain_classic.retrievers import EnsembleRetriever
 
 # --- Configuration ---
 PROCESSED_DIR = "./processed_md"  # Dossier contenant les fichiers Markdown traités par Docling
 CHROMA_DB_PATH = "./chroma_db"    # Chemin où la base de données Chroma sera stockée
-OLLAMA_MODEL = "llama2"           # Modèle Ollama à utiliser (par exemple, "llama2", "mistral", "gemma")
-EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2" # Modèle d'embeddings
+OLLAMA_MODEL = "gemma3:12b"           # Modèle Ollama à utiliser (par exemple, "llama2", "mistral", "gemma")
+EMBEDDING_MODEL_NAME = "embeddinggemma:latest" # Modèle d'embeddings
 
 # --- 1. Ingestion et Traitement des Documents ---
 def ingest_documents():
@@ -46,38 +48,22 @@ def ingest_documents():
     print(f"Divisé en {len(chunks)} chunks.")
     return chunks
 
-def full_text_search(query, chunks, top_k=2):
-    """
-    Effectue une recherche plein texte simple sur les chunks.
-    """
-    results = []
-    for chunk in chunks:
-        score = 0
-        # Compte les occurrences de chaque mot de la query dans le contenu du chunk
-        for word in query.lower().split():
-            score += chunk.page_content.lower().count(word)
 
-        if score > 0:
-            results.append({"chunk": chunk, "score": score})
-
-    # Trie les résultats par score décroissant et retourne le top_k
-    sorted_results = sorted(results, key=lambda x: x["score"], reverse=True)
-    # Retourne uniquement les chunks
-    return [res["chunk"] for res in sorted_results[:top_k]]
 
 
 # --- 2. Création ou Chargement de la Base de Données Vectorielle ---
 def setup_vector_db(chunks):
     print("Initialisation du modèle d'embeddings...")
-    embeddings = HuggingFaceBgeEmbeddings(model_name=EMBEDDING_MODEL_NAME, model_kwargs={'device': 'cpu'})
-    # Pour utiliser CUDA si disponible
-    # embeddings = HuggingFaceBgeEmbeddings(model_name=EMBEDDING_MODEL_NAME, model_kwargs={'device': 'cuda'})
+    embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL_NAME)
 
     if os.path.exists(CHROMA_DB_PATH) and os.listdir(CHROMA_DB_PATH):
         print(f"Chargement de la base de données Chroma existante depuis {CHROMA_DB_PATH}...")
         vector_db = Chroma(persist_directory=CHROMA_DB_PATH, embedding_function=embeddings)
-        # Optionnel: Si vous voulez ajouter de nouveaux chunks, vous pouvez faire:
-        # vector_db.add_documents(chunks)
+        
+        # Check if we should re-index (simple heuristic: if user asks or if we want to force it)
+        # For now, we'll just print a message. In a real app, we might check file timestamps.
+        print("Note: Pour forcer la réindexation, supprimez le dossier 'chroma_db' ou utilisez une option de commande (à implémenter).")
+        
     else:
         print(f"Création d'une nouvelle base de données Chroma dans {CHROMA_DB_PATH}...")
         vector_db = Chroma.from_documents(
@@ -85,8 +71,8 @@ def setup_vector_db(chunks):
             embedding=embeddings,
             persist_directory=CHROMA_DB_PATH
         )
-        vector_db.persist() # Sauvegarde la DB sur le disque
-        print("Base de données Chroma créée et persistée.")
+        # vector_db.persist() # Chroma 0.4+ persists automatically usually, but good to keep if using older version
+        print("Base de données Chroma créée.")
 
     return vector_db
 
@@ -108,9 +94,21 @@ def setup_rag_chain(vector_db, chunks):
     document_chain = create_stuff_documents_chain(llm, prompt)
 
     # Crée le retriever à partir de la base de données vectorielle
-    retriever = vector_db.as_retriever(search_kwargs={"k": 3})
+    vector_retriever = vector_db.as_retriever(search_kwargs={"k": 3})
 
-    return document_chain, retriever
+    # Crée le retriever BM25
+    print("Initialisation de BM25Retriever...")
+    bm25_retriever = BM25Retriever.from_documents(chunks)
+    bm25_retriever.k = 3
+
+    # Crée l'EnsembleRetriever
+    print("Création de l'EnsembleRetriever (Hybrid Search)...")
+    ensemble_retriever = EnsembleRetriever(
+        retrievers=[bm25_retriever, vector_retriever],
+        weights=[0.5, 0.5] # Poids égal pour le moment
+    )
+
+    return document_chain, ensemble_retriever
 
 # --- Fonction principale ---
 def main():
@@ -133,23 +131,20 @@ def main():
 
         print("Recherche de réponse...")
         try:
-            # 1. Vector search
-            vector_results = retriever.get_relevant_documents(question)
-
-            # 2. Full-text search
-            full_text_results = full_text_search(question, chunks, top_k=2)
-
-            # 3. Combine and deduplicate results
-            combined_results = vector_results + full_text_results
-            unique_results = []
-            seen_content = set()
-            for doc in combined_results:
-                if doc.page_content not in seen_content:
-                    unique_results.append(doc)
-                    seen_content.add(doc.page_content)
-
-            # 4. Invoke RAG chain with combined context
-            response = document_chain.invoke({"input": question, "context": unique_results})
+            # Utilisation de l'EnsembleRetriever qui fait déjà la combinaison
+            # retrieval_chain = create_retrieval_chain(retriever, document_chain) # Si on utilisait la nouvelle API
+            
+            # On récupère les documents pertinents manuellement pour voir ce qui se passe (optionnel)
+            # docs = retriever.invoke(question)
+            
+            # Exécution de la chaîne
+            # Note: create_stuff_documents_chain attend 'context' et 'input'
+            
+            # Récupération des documents via l'ensemble retriever
+            relevant_docs = retriever.invoke(question)
+            
+            # Génération de la réponse
+            response = document_chain.invoke({"input": question, "context": relevant_docs})
             print("\nRéponse:")
             print(response)
 

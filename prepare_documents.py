@@ -2,12 +2,13 @@ import subprocess
 import shutil
 import sys
 from pathlib import Path
+import zipfile
 
 # --- Configuration des Chemins ---
 # Utilise pathlib pour une gestion multiplateforme (Windows, Linux, macOS)
 # BASE_DIR = Répertoire où se trouve ce script
 BASE_DIR = Path(__file__).parent.resolve()
-SOURCE_DIR = BASE_DIR / "sources"
+SOURCE_DIR = Path(r"C:\test\docs_test")
 PROCESSED_DIR = BASE_DIR / "processed_md"
 
 def check_tesseract_installed():
@@ -50,51 +51,195 @@ def setup_directories():
         print(f"Erreur lors de la préparation des dossiers : {e}", file=sys.stderr)
         sys.exit(1)
 
+def has_images_docx(file_path):
+    """
+    Détecte si un fichier DOCX/PPTX contient des images.
+    """
+    try:
+        ext = file_path.suffix.lower()
+        if ext in [".docx", ".pptx"]:
+            with zipfile.ZipFile(file_path, 'r') as z:
+                # Les images sont stockées dans word/media ou ppt/media
+                for name in z.namelist():
+                    if "media/" in name and not name.endswith("/"):
+                        return True
+            return False
+        return False
+    except Exception:
+        return False # En cas d'erreur, on assume pas d'images pour ne pas bloquer, ou True par sécurité ? Disons False pour Docling fast.
+
+def process_pdf_with_ai(file_path):
+    """Traite un PDF avec pdf-ocr-ai via LM Studio."""
+    output_path = PROCESSED_DIR / (file_path.stem + ".md")
+    print(f"\nTraitement AI (LM Studio) : {file_path.name}")
+    
+    # Commande uvx pour pdf-ocr-ai
+    # Note: On suppose que uv est installé et accessible.
+    command = [
+        "uvx",
+        "--from", "git+https://github.com/laurentvv/pdf-ocr-ai",
+        "pdf-ocr-ai",
+        str(file_path),
+        str(output_path),
+        "--provider", "lm-studio",
+        "--model", "qwen/qwen3-vl-30b"
+    ]
+    
+    try:
+        # On affiche la sortie en temps réel pour que l'utilisateur voie la progression
+        subprocess.run(command, check=True, encoding='utf-8', errors='replace')
+        print(f"✅ PDF traité : {output_path}")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Erreur lors du traitement de {file_path.name}", file=sys.stderr)
+    except FileNotFoundError:
+        print("❌ Commande 'uvx' introuvable. Assurez-vous d'avoir installé 'uv'.", file=sys.stderr)
+
+def run_docling_batch(files, use_ocr):
+    """Exécute Docling sur un lot de fichiers."""
+    if not files:
+        return
+
+    mode_name = "COMPLET (OCR + VLM)" if use_ocr else "RAPIDE (Texte seul)"
+    print(f"\nTraitement Docling {mode_name} : {len(files)} fichiers")
+    
+    # Determine docling path relative to current python executable
+    # This handles the case where the script is run via venv python but docling is not in PATH
+    python_dir = Path(sys.executable).parent
+    docling_path = python_dir / "docling.exe"
+    
+    # Fallback to "docling" if the specific executable doesn't exist (e.g. linux/mac or global install)
+    docling_cmd = str(docling_path) if docling_path.exists() else "docling"
+
+    files_args = [str(f) for f in files]
+    command = [
+        docling_cmd,
+        *files_args,
+        "--to", "md",
+        "--output", str(PROCESSED_DIR)
+    ]
+
+    if use_ocr:
+        command.extend(["--ocr", "--enrich-picture-description"])
+    else:
+        command.extend(["--no-ocr", "--no-enrich-picture-description"])
+
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True, encoding='utf-8', errors='replace')
+        print(f"✅ Lot Docling {mode_name} terminé.")
+    except subprocess.CalledProcessError as e:
+        print(f"\n--- ERREUR sur le lot {mode_name} ---", file=sys.stderr)
+        print(e.stderr, file=sys.stderr)
+
+def add_filename_context(file_path, original_filename):
+    """Ajoute le nom du fichier original en en-tête du fichier Markdown."""
+    try:
+        if not file_path.exists():
+            return
+
+        content = file_path.read_text(encoding='utf-8', errors='replace')
+        header = f"# Source: {original_filename}\n\n"
+        
+        # Évite de rajouter l'en-tête s'il existe déjà (cas de re-run)
+        if not content.startswith("# Source:"):
+            file_path.write_text(header + content, encoding='utf-8')
+            print(f"   -> Contexte ajouté : {original_filename}")
+    except Exception as e:
+        print(f"   -> Erreur ajout contexte : {e}", file=sys.stderr)
+
+def process_raw_text_file(file_path):
+    """Copie et traite les fichiers texte bruts (.txt, .md)."""
+    output_path = PROCESSED_DIR / (file_path.stem + ".md")
+    print(f"\nTraitement Fichier Brut : {file_path.name}")
+    
+    try:
+        content = file_path.read_text(encoding='utf-8', errors='replace')
+        header = f"# Source: {file_path.name}\n\n"
+        
+        # Si c'est déjà un MD et qu'il a déjà l'en-tête, on ne le remet pas
+        if content.startswith("# Source:"):
+            final_content = content
+        else:
+            final_content = header + content
+            
+        output_path.write_text(final_content, encoding='utf-8')
+        print(f"✅ Fichier brut copié : {output_path}")
+    except Exception as e:
+        print(f"❌ Erreur copie fichier brut {file_path.name}: {e}", file=sys.stderr)
+
 def run_docling_conversion():
     """Exécute la commande de conversion Docling."""
 
     # Vérifie si le dossier source contient des fichiers
-    if not any(SOURCE_DIR.iterdir()):
-        print(f"\nAvertissement : Le dossier source '{SOURCE_DIR}' est vide.")
-        print("Processus terminé sans conversion. Ajoutez des fichiers et relancez.")
+    files_to_process = []
+    # Extensions supportées par Docling
+    docling_extensions = ["*.pdf", "*.docx", "*.pptx", "*.html", "*.asciidoc"]
+    # Extensions brutes
+    raw_extensions = ["*.txt", "*.md"]
+    
+    for ext in docling_extensions + raw_extensions:
+        files_to_process.extend(list(SOURCE_DIR.glob(ext)))
+
+    if not files_to_process:
+        print(f"\nAvertissement : Aucun fichier supporté trouvé dans '{SOURCE_DIR}'.")
         return
 
-    print("\nLancement de la conversion Docling...")
-    print("Cela peut prendre du temps en fonction du nombre de fichiers et de l'activation de l'OCR...")
+    print(f"\nFichiers trouvés : {len(files_to_process)}")
+    
+    pdf_files = []
+    docling_fast_files = []
+    docling_full_files = []
+    raw_files = []
 
-    command = [
-        "docling",
-        "--output-format", "markdown",
-        "--output-dir", str(PROCESSED_DIR),
-        "--ocr",
-        "--image-captions",
-        str(SOURCE_DIR)
-    ]
+    print("Analyse et routage des fichiers...")
+    for f in files_to_process:
+        ext = f.suffix.lower()
+        if ext == ".pdf":
+            print(f" - {f.name} -> PDF OCR AI (LM Studio)")
+            pdf_files.append(f)
+        elif ext in [".docx", ".pptx"]:
+            if has_images_docx(f):
+                print(f" - {f.name} -> Docling COMPLET (Images détectées)")
+                docling_full_files.append(f)
+            else:
+                print(f" - {f.name} -> Docling RAPIDE (Texte pur)")
+                docling_fast_files.append(f)
+        elif ext in [".txt", ".md"]:
+            print(f" - {f.name} -> Copie Brute (Texte)")
+            raw_files.append(f)
+        else:
+            # Autres fichiers (html, asciidoc) -> Docling rapide
+            print(f" - {f.name} -> Docling RAPIDE")
+            docling_fast_files.append(f)
 
-    try:
-        result = subprocess.run(command, check=True, capture_output=True, text=True, encoding='utf-8')
+    print("\nLancement des conversions...")
+    
+    # 1. Traitement des PDF avec pdf-ocr-ai
+    for pdf in pdf_files:
+        process_pdf_with_ai(pdf)
+        # Ajout du contexte
+        output_md = PROCESSED_DIR / (pdf.stem + ".md")
+        add_filename_context(output_md, pdf.name)
 
-        print("\n----------------------------------------------------")
-        print("✅ Conversion Docling terminée avec succès.")
-        print(f"Les fichiers Markdown sont disponibles dans : {PROCESSED_DIR}")
+    # 2. Traitement Docling
+    if docling_fast_files:
+        run_docling_batch(docling_fast_files, use_ocr=False)
+        for f in docling_fast_files:
+             output_md = PROCESSED_DIR / (f.stem + ".md")
+             add_filename_context(output_md, f.name)
+    
+    if docling_full_files:
+        run_docling_batch(docling_full_files, use_ocr=True)
+        for f in docling_full_files:
+             output_md = PROCESSED_DIR / (f.stem + ".md")
+             add_filename_context(output_md, f.name)
 
-    except FileNotFoundError:
-        print("\n--- ERREUR ---", file=sys.stderr)
-        print("La commande 'docling' n'a pas été trouvée.", file=sys.stderr)
-        print("Veuillez vous assurer que Docling est bien installé et accessible dans le PATH de votre système.", file=sys.stderr)
-        print("Installation : pip install docling", file=sys.stderr)
-        sys.exit(1)
+    # 3. Traitement Fichiers Bruts
+    for raw in raw_files:
+        process_raw_text_file(raw)
 
-    except subprocess.CalledProcessError as e:
-        print("\n--- ERREUR ---", file=sys.stderr)
-        print("Une erreur est survenue pendant l'exécution de Docling.", file=sys.stderr)
-        print(f"Commande exécutée : {' '.join(command)}", file=sys.stderr)
-        print(f"Code de retour : {e.returncode}", file=sys.stderr)
-        print("\nSortie d'erreur (Stderr) de Docling :", file=sys.stderr)
-        print(e.stderr, file=sys.stderr)
-        print("\nSortie standard (Stdout) de Docling :", file=sys.stderr)
-        print(e.stdout, file=sys.stderr)
-        sys.exit(1)
+    print("\n----------------------------------------------------")
+    print("✅ Toutes les conversions sont terminées.")
+    print(f"Les fichiers Markdown sont disponibles dans : {PROCESSED_DIR}")
 
 def main():
     print("--- Script de Prétraitement Docling ---")

@@ -1,6 +1,6 @@
 import os
 import sys
-from rag_ollama_new import ingest_documents, setup_vector_db, setup_rag_chain
+from rag_ollama.rag import ingest_documents, setup_vector_db, setup_rag_chain
 
 # Test Cases
 TEST_CASES = [
@@ -41,12 +41,18 @@ def run_tests():
     
     # 1. Setup RAG Pipeline
     print("Initialisation du pipeline RAG...")
-    chunks = ingest_documents()
+    
+    # Define paths for testing (using defaults or specific test paths)
+    from pathlib import Path
+    TEST_PROCESSED_DIR = Path("./processed_md")
+    TEST_CHROMA_DB = Path("./chroma_db")
+    
+    chunks = ingest_documents(processed_dir=TEST_PROCESSED_DIR)
     if chunks is None:
         print("Erreur: Aucun document chargé.")
         return
 
-    vector_db = setup_vector_db(chunks)
+    vector_db = setup_vector_db(chunks, chroma_db_path=TEST_CHROMA_DB)
     document_chain, retriever = setup_rag_chain(vector_db, chunks)
     
     print(f"\n--- Exécution de {len(TEST_CASES)} tests ---\n")

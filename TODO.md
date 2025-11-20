@@ -24,7 +24,13 @@
 
 ---
 
-## 4. Implémentation des tests
+## 4. Migration pip vers uv
+- [ ] Migration des dépendances dans un fichier pyproject.toml
+- [ ] Migration des scripts pour pouvoir utiliser uvx
+
+---
+
+## 5. Implémentation des tests
 - [ ] Tests unitaires pour :
   - OCR
   - Conversion PDF → image

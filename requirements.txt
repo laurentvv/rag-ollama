@@ -7,3 +7,8 @@ sentence-transformers
 unstructured
 langchain-text-splitters
 langchain-classic
+rank_bm25
+langchain-chroma
+langchain-ollama
+markdown
+

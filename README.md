@@ -22,15 +22,16 @@
 Before you begin, ensure you have the following installed:
 
 *   **[uv](https://github.com/astral-sh/uv)**: Fast Python package installer and resolver.
-*   **[Ollama](https://ollama.com/)**: Running locally for LLM and Embeddings.
-*   **[LM Studio](https://lmstudio.ai/)**: Required for AI OCR/Image processing (Vision models).
+*   **[Ollama](https://ollama.com/)**: Running locally for LLM, Embeddings, and Vision.
 
 ## 🚀 Workflow (Quick Start)
 
 You don't need to install anything! Just ensure you have the **Prerequisites** ready, then follow these steps using `uvx`.
 
 ### 1️⃣ Step 1: Prepare Documents
-Convert your source documents (PDF, Images, DOCX) into a clean Markdown format.
+**Goal:** Convert your raw documents (PDF, Images, DOCX) into clean, machine-readable Markdown.
+
+*   **Why?** LLMs work best with plain text. We use AI-powered OCR to "read" your PDFs and images and convert them into a structured text format that the system can easily understand and index.
 
 ```bash
 # Process all documents in the source directory
@@ -38,7 +39,9 @@ uvx --from git+https://github.com/laurentvv/rag-ollama rag-prepare --input "C:\M
 ```
 
 ### 2️⃣ Step 2: Chat & Index
-Start the chat interface. It will automatically index new files and let you ask questions.
+**Goal:** Index the processed text and start the conversation.
+
+*   **Why?** The system needs to "learn" your documents by converting them into mathematical vectors (indexing) and storing them in a local database (ChromaDB). This allows it to instantly find the most relevant information when you ask a question.
 
 ```bash
 uvx --from git+https://github.com/laurentvv/rag-ollama rag-ollama --input "./processed_md" --db "./chroma_db"
@@ -49,34 +52,30 @@ To add a single document without reprocessing everything:
 
 ```bash
 uvx --from git+https://github.com/laurentvv/rag-ollama rag-add "C:\MyDocs\new_file.pdf" --source-dir "C:\MyDocs" --processed-dir "./processed_md" --db "./chroma_db"
-```
-
----
-
-## 📖 Command Reference
-
-### `rag-prepare` (Document Preparation)
-Converts documents to Markdown.
-*   `--input <dir>` (Required): Source directory containing documents (PDF, Images, DOCX).
-*   `--output <dir>` (Required): Output directory for processed Markdown files.
-*   `--vision-model <name>`: Vision model to use in LM Studio (default: `qwen2-vl-7b-instruct`).
-*   `--pdf-provider <name>`: Provider for PDF OCR (default: `lm-studio`).
-*   `--pdf-model <name>`: Model for PDF OCR (default: `qwen/qwen3-vl-30b`).
+| `--vision-model <name>` | ❌ | `llama3.2-vision` | Vision model to use in Ollama for images. |
+| `--pdf-provider <name>` | ❌ | `ollama` | Provider for PDF OCR (currently supports `ollama`). |
+| `--pdf-model <name>` | ❌ | `llama3.2-vision` | Model for PDF OCR. |
 
 ### `rag-chat` (Chat & Index)
 Starts the RAG interface.
-*   `--input <dir>` (Required): Directory containing processed Markdown files.
-*   `--db <dir>` (Required): Path to ChromaDB directory.
-*   `--index-only`: Run indexing only and exit.
-*   `--model <name>`: Ollama LLM model name (default: `gemma3:12b`).
-*   `--embedding-model <name>`: Ollama embedding model name (default: `embeddinggemma:latest`).
+
+| Argument | Required | Default | Description |
+| :--- | :---: | :--- | :--- |
+| `--input <dir>` | ✅ | - | Directory containing processed Markdown files. |
+| `--db <dir>` | ✅ | - | Path to ChromaDB directory. |
+| `--index-only` | ❌ | `False` | Run indexing only and exit. |
+| `--model <name>` | ❌ | `gemma3:12b` | Ollama LLM model name. |
+| `--embedding-model <name>` | ❌ | `embeddinggemma:latest` | Ollama embedding model name. |
 
 ### `rag-add` (Add Single Document)
 Adds, processes, and indexes a single file.
-*   `file_path`: Path to the file to add.
-*   `--source-dir <dir>` (Required): Directory where the file will be copied.
-*   `--processed-dir <dir>`: Output directory for Markdown (default: `./processed_md`).
-*   `--db <dir>`: Path to ChromaDB directory (default: `./chroma_db`).
+
+| Argument | Required | Default | Description |
+| :--- | :---: | :--- | :--- |
+| `file_path` | ✅ | - | Path to the file to add. |
+| `--source-dir <dir>` | ✅ | - | Directory where the file will be copied. |
+| `--processed-dir <dir>` | ❌ | `./processed_md` | Output directory for Markdown. |
+| `--db <dir>` | ❌ | `./chroma_db` | Path to ChromaDB directory. |
 
 ---
 
@@ -105,36 +104,55 @@ rag-chat --input "./processed_md" --db "./chroma_db"
 rag-add "C:\MyDocs\new.pdf" --source-dir "C:\MyDocs"
 ```
 
-## 🤖 Model Configuration
+## 🤖 Model Configuration & Selection
 
-### Ollama Models
-By default, the system uses `gemma3:12b` and `embeddinggemma:latest`. You can change this via arguments:
+### Understanding the Models
+This system uses three types of AI models, all running locally via Ollama:
+
+1.  **LLM (Large Language Model)**: The "brain" that answers your questions (e.g., `gemma3:12b`, `llama3`, `mistral`).
+2.  **Embedding Model**: Converts text into numbers (vectors) for search (e.g., `embeddinggemma:latest`, `nomic-embed-text`).
+3.  **Vision Model**: Analyzes images and PDFs for OCR (e.g., `llama3.2-vision`, `qwen2.5-vl`).
+
+### How to Find and Choose Models
+You can browse available models at **[ollama.com/library](https://ollama.com/library)**.
+
+*   **For General Chat (LLM)**: Look for models with high reasoning capabilities.
+    *   *Recommended*: `gemma3:12b` (balanced), `llama3:8b` (fast), `mistral` (good generalist).
+*   **For Embeddings**: Look for models specifically trained for embeddings.
+    *   *Recommended*: `embeddinggemma` (Google's latest), `nomic-embed-text` (very popular for RAG).
+*   **For Vision/OCR**: Look for "multimodal" or "vision" models.
+    *   **[Browse Ollama Vision Models](https://ollama.com/search?c=vision)**
+    *   *Recommended*: `llama3.2-vision` (excellent), `qwen2.5-vl` (strong performance), `llava` (classic).
+    *   *Note*: `pdf-ocr-ai` uses these models to "see" the document content. Larger models (like `qwen2.5-vl:32b`) are more accurate but slower.
+
+### Changing Models via CLI
+You can override the default models using command-line arguments:
+
+**Chat with a different LLM and Embedding model:**
 ```bash
-rag-chat --input "./processed_md" --db "./chroma_db" --model "llama3" --embedding-model "nomic-embed-text"
+rag-chat --input "./processed_md" --db "./chroma_db" --model "mistral" --embedding-model "nomic-embed-text"
 ```
 
-### LM Studio (Vision)
-By default, the system uses `qwen2-vl-7b-instruct` for image analysis. You can change this during preparation:
+**Prepare documents with a different Vision model:**
 ```bash
-rag-prepare --input "C:\MyDocs" --output "./processed_md" --vision-model "llama-3.2-vision"
+rag-prepare --input "C:\MyDocs" --output "./processed_md" --vision-model "llava" --pdf-model "llava"
 ```
 
 ## 🤖 Setup AI Providers
 
 ### Setup Ollama
 1.  Download and install [Ollama](https://ollama.com/).
-2.  Pull the required models:
+2.  **Pull the default models** (recommended for first run):
     ```bash
     ollama pull gemma3:12b
     ollama pull embeddinggemma:latest
+    ollama pull llama3.2-vision
     ```
-
-### Setup LM Studio (for Vision/OCR)
-1.  Download and install [LM Studio](https://lmstudio.ai/).
-2.  Load a Vision model (e.g., `qwen2-vl` or `llama-3.2-vision`).
-3.  Go to the **Developer/Server** tab (double arrow icon).
-4.  Start the local server on port **1234**.
-    *   Ensure "Cross-Origin-Resource-Sharing (CORS)" is enabled (usually on by default).
+3.  **Pull alternative models** (if you want to customize):
+    ```bash
+    ollama pull mistral
+    ollama pull nomic-embed-text
+    ```
 
 ## 📂 Project Structure
 

@@ -1,4 +1,7 @@
 import os
+import sys
+import ollama
+import yaml
 from langchain_community.document_loaders import DirectoryLoader, UnstructuredMarkdownLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_ollama import OllamaEmbeddings
@@ -156,16 +159,74 @@ def setup_rag_chain(vector_db, chunks, ollama_model=None):
 
 import argparse
 
+def load_config():
+    """Charge la configuration depuis config.yaml."""
+    base_dir = Path(__file__).parent.parent.parent.resolve()
+    config_path = Path("config.yaml")
+    if not config_path.exists():
+        config_path = base_dir / "config.yaml"
+    
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                return yaml.safe_load(f) or {}
+        except Exception as e:
+            print(f"⚠️  Erreur chargement config.yaml: {e}", file=sys.stderr)
+    return {}
+
+def check_ollama_available():
+    """Vérifie si le serveur Ollama est accessible."""
+    try:
+        ollama.list()
+        return True
+    except Exception:
+        print("\n--- ERREUR OLLAMA ---", file=sys.stderr)
+        print("❌ Impossible de communiquer avec Ollama.", file=sys.stderr)
+        print("Assurez-vous qu'Ollama est lancé (commande 'ollama serve' ou via l'application).", file=sys.stderr)
+        return False
+
+def check_model_available(model_name):
+    """Vérifie si un modèle est présent dans Ollama."""
+    try:
+        models_info = ollama.list()
+        available_models = [m['model'] for m in models_info.get('models', [])]
+        
+        if model_name in available_models:
+            return True
+        if f"{model_name}:latest" in available_models:
+            return True
+        
+        if ':' in model_name:
+             if model_name in available_models:
+                 return True
+        else:
+             for m in available_models:
+                 if m.split(':')[0] == model_name:
+                     return True
+
+        print(f"\n⚠️  ATTENTION : Le modèle '{model_name}' n'est pas trouvé dans Ollama.", file=sys.stderr)
+        print(f"   -> Installation recommandée : ollama pull {model_name}", file=sys.stderr)
+        return False
+    except Exception:
+        return False
+
 # --- Fonction principale ---
 def main():
     global PROCESSED_DIR, CHROMA_DB_PATH, OLLAMA_MODEL, EMBEDDING_MODEL_NAME
     
+    # Chargement de la config
+    config = load_config()
+    chat_config = config.get("chat", {})
+    
+    default_llm = chat_config.get("llm_model", "gemma3:12b")
+    default_embed = chat_config.get("embedding_model", "embeddinggemma:latest")
+
     parser = argparse.ArgumentParser(description="RAG System with Ollama")
     parser.add_argument("--index-only", action="store_true", help="Run indexing only and exit")
     parser.add_argument("--input", "-i", type=Path, required=True, help="Directory containing processed Markdown files")
     parser.add_argument("--db", type=Path, required=True, help="Path to ChromaDB directory")
-    parser.add_argument("--model", type=str, default="gemma3:12b", help="Ollama LLM model name (default: gemma3:12b)")
-    parser.add_argument("--embedding-model", type=str, default="embeddinggemma:latest", help="Ollama embedding model name (default: embeddinggemma:latest)")
+    parser.add_argument("--model", type=str, default=default_llm, help=f"Ollama LLM model name (default: {default_llm})")
+    parser.add_argument("--embedding-model", type=str, default=default_embed, help=f"Ollama embedding model name (default: {default_embed})")
     
     args = parser.parse_args()
     
@@ -179,8 +240,13 @@ def main():
     print(f"LLM Model: {OLLAMA_MODEL}")
     print(f"Embedding Model: {EMBEDDING_MODEL_NAME}")
 
-    print(f"LLM Model: {OLLAMA_MODEL}")
-    print(f"Embedding Model: {EMBEDDING_MODEL_NAME}")
+    if not check_ollama_available():
+        sys.exit(1)
+    
+    check_model_available(OLLAMA_MODEL)
+    check_model_available(EMBEDDING_MODEL_NAME)
+
+
 
     chunks = ingest_documents(processed_dir=PROCESSED_DIR)
     if chunks is None:

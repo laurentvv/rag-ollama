@@ -1,11 +1,14 @@
 import subprocess
 import shutil
 import sys
+import os
 from pathlib import Path
 import zipfile
 import base64
 from openai import OpenAI
 import mimetypes
+import ollama
+import yaml
 
 import argparse
 
@@ -17,9 +20,9 @@ BASE_DIR = Path(__file__).parent.parent.parent.resolve()
 # Global variables to be updated by args
 SOURCE_DIR = None
 PROCESSED_DIR = None
-PDF_PROVIDER = "lm-studio"
-PDF_MODEL = "qwen/qwen3-vl-30b"
-VISION_MODEL = "qwen2-vl-7b-instruct"
+PDF_PROVIDER = "ollama"
+PDF_MODEL = "llama3.2-vision"
+VISION_MODEL = "llama3.2-vision"
 
 def check_tesseract_installed():
     """Vérifie si Tesseract-OCR est installé et accessible."""
@@ -36,6 +39,60 @@ def check_tesseract_installed():
         print("  - Linux (Debian/Ubuntu) : sudo apt-get install tesseract-ocr tesseract-ocr-fra", file=sys.stderr)
         print("  - macOS (Homebrew) : brew install tesseract", file=sys.stderr)
         print("\nAprès l'installation, vérifiez que la commande 'tesseract --version' fonctionne dans votre terminal.", file=sys.stderr)
+        return False
+
+def load_config():
+    """Charge la configuration depuis config.yaml."""
+    config_path = Path("config.yaml")
+    if not config_path.exists():
+        config_path = BASE_DIR / "config.yaml"
+    
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                return yaml.safe_load(f) or {}
+        except Exception as e:
+            print(f"⚠️  Erreur chargement config.yaml: {e}", file=sys.stderr)
+    return {}
+
+def check_ollama_available():
+    """Vérifie si le serveur Ollama est accessible."""
+    try:
+        ollama.list()
+        return True
+    except Exception:
+        print("\n--- ERREUR OLLAMA ---", file=sys.stderr)
+        print("❌ Impossible de communiquer avec Ollama.", file=sys.stderr)
+        print("Assurez-vous qu'Ollama est lancé (commande 'ollama serve' ou via l'application).", file=sys.stderr)
+        return False
+
+def check_model_available(model_name):
+    """Vérifie si un modèle est présent dans Ollama."""
+    try:
+        models_info = ollama.list()
+        # models_info['models'] est une liste d'objets
+        available_models = [m['model'] for m in models_info.get('models', [])]
+        
+        # Gestion des tags (ex: 'llama3' vs 'llama3:latest')
+        if model_name in available_models:
+            return True
+        if f"{model_name}:latest" in available_models:
+            return True
+        
+        # Si le modèle contient un tag, on vérifie exact match
+        if ':' in model_name:
+             if model_name in available_models:
+                 return True
+        else:
+             # Si pas de tag, on regarde si une version existe
+             for m in available_models:
+                 if m.split(':')[0] == model_name:
+                     return True
+
+        print(f"\n⚠️  ATTENTION : Le modèle '{model_name}' n'est pas trouvé dans Ollama.", file=sys.stderr)
+        print(f"   -> Installation recommandée : ollama pull {model_name}", file=sys.stderr)
+        return False
+    except Exception:
         return False
 
 def setup_directories():
@@ -79,15 +136,12 @@ def has_images_docx(file_path):
         return False # En cas d'erreur, on assume pas d'images pour ne pas bloquer, ou True par sécurité ? Disons False pour Docling fast.
 
 def process_pdf_with_ai(file_path):
-    """Traite un PDF avec pdf-ocr-ai via LM Studio."""
+    """Traite un PDF avec pdf-ocr-ai via Ollama."""
     output_path = PROCESSED_DIR / (file_path.stem + ".md")
-    print(f"\nTraitement AI (LM Studio) : {file_path.name}")
+    print(f"\nTraitement AI (Ollama) : {file_path.name}")
     
-    # Commande uvx pour pdf-ocr-ai
-    # Note: On suppose que uv est installé et accessible.
+    # Commande directe pdf-ocr-ai (installé comme dépendance)
     command = [
-        "uvx",
-        "--from", "git+https://github.com/laurentvv/pdf-ocr-ai",
         "pdf-ocr-ai",
         str(file_path),
         str(output_path),
@@ -97,15 +151,17 @@ def process_pdf_with_ai(file_path):
     
     try:
         # On affiche la sortie en temps réel pour que l'utilisateur voie la progression
-        subprocess.run(command, check=True, encoding='utf-8', errors='replace')
+        env = os.environ.copy()
+        env["OPENAI_TIMEOUT"] = "600" # Augmente le timeout à 10 minutes pour les modèles lents
+        subprocess.run(command, check=True, encoding='utf-8', errors='replace', env=env)
         print(f"✅ PDF traité : {output_path}")
     except subprocess.CalledProcessError as e:
         print(f"❌ Erreur lors du traitement de {file_path.name}", file=sys.stderr)
     except FileNotFoundError:
-        print("❌ Commande 'uvx' introuvable. Assurez-vous d'avoir installé 'uv'.", file=sys.stderr)
+        print("❌ Commande 'pdf-ocr-ai' introuvable. Vérifiez l'installation.", file=sys.stderr)
 
 def process_image_with_ai(file_path):
-    """Traite une image avec un modèle VLM via LM Studio."""
+    """Traite une image avec un modèle VLM via Ollama."""
     output_path = PROCESSED_DIR / (file_path.stem + ".md")
     print(f"\nTraitement Image AI : {file_path.name}")
     
@@ -113,10 +169,41 @@ def process_image_with_ai(file_path):
         mime_type, _ = mimetypes.guess_type(file_path)
         if not mime_type:
             mime_type = "image/jpeg" # Fallback
+
+        # Encodage image en base64
+        # Note: Ollama python lib accepts path or base64. Path is easier if local.
+        # But let's stick to the user's request pattern or just pass the path if supported.
+        # The python lib supports 'images': ['path/to/img'] or base64.
+        
+        # Utilisation de la librairie native ollama
+        # https://github.com/ollama/ollama-python
+        
+        # Let's use the Client approach as requested by user
+        client = ollama.Client(host='http://localhost:11434', timeout=600) # 10 min request timeout
+        
+        response = client.chat(
+            model=VISION_MODEL,
+            messages=[
+                {
+                    'role': 'user',
+                    'content': 'Describe this image in detail, capturing all visible text and visual elements for documentation purposes.',
+                    'images': [str(file_path)]
+                }
+            ],
+            options={
+                'num_ctx': 4096, # Context window
+            },
+            keep_alive='15m'
+        )
+        
+        content = response['message']['content']
+        
+        output_path.write_text(content, encoding='utf-8')
+        print(f"✅ Image traitée : {output_path}")
             
     except Exception as e:
         print(f"❌ Erreur lors du traitement de {file_path.name}: {e}", file=sys.stderr)
-        print("Assurez-vous que LM Studio est lancé et que le serveur local est activé.", file=sys.stderr)
+        print("Assurez-vous qu'Ollama est lancé et que le modèle vision est disponible.", file=sys.stderr)
 
 def run_docling_batch(files, use_ocr):
     """Exécute Docling sur un lot de fichiers."""
@@ -221,7 +308,7 @@ def run_docling_conversion():
     for f in files_to_process:
         ext = f.suffix.lower()
         if ext == ".pdf":
-            print(f" - {f.name} -> PDF OCR AI (LM Studio)")
+            print(f" - {f.name} -> PDF OCR AI (Ollama)")
             pdf_files.append(f)
         elif ext in [".docx", ".pptx"]:
             if has_images_docx(f):
@@ -234,7 +321,7 @@ def run_docling_conversion():
             print(f" - {f.name} -> Copie Brute (Texte)")
             raw_files.append(f)
         elif ext in [".jpg", ".jpeg", ".png", ".tiff", ".bmp"]:
-            print(f" - {f.name} -> Image AI (LM Studio)")
+            print(f" - {f.name} -> Image AI (Ollama)")
             image_files.append(f)
         else:
             # Autres fichiers (html, asciidoc) -> Docling rapide
@@ -280,12 +367,20 @@ def run_docling_conversion():
 def main():
     global SOURCE_DIR, PROCESSED_DIR, PDF_PROVIDER, PDF_MODEL, VISION_MODEL
     
+    # Chargement de la config
+    config = load_config()
+    prepare_config = config.get("prepare", {})
+    
+    default_vision = prepare_config.get("vision_model", "llama3.2-vision")
+    default_pdf_provider = prepare_config.get("pdf_provider", "ollama")
+    default_pdf_model = prepare_config.get("pdf_model", "llama3.2-vision")
+
     parser = argparse.ArgumentParser(description="Script de prétraitement de documents pour RAG (OCR + VLM)")
     parser.add_argument("--input", "-i", type=Path, required=True, help="Dossier contenant les documents sources (PDF, DOCX, Images...)")
     parser.add_argument("--output", "-o", type=Path, required=True, help="Dossier de sortie pour les fichiers Markdown")
-    parser.add_argument("--vision-model", type=str, default="qwen2-vl-7b-instruct", help="Modèle Vision pour les images (default: qwen2-vl-7b-instruct)")
-    parser.add_argument("--pdf-provider", type=str, default="lm-studio", help="Provider pour pdf-ocr-ai (default: lm-studio)")
-    parser.add_argument("--pdf-model", type=str, default="qwen/qwen3-vl-30b", help="Modèle pour pdf-ocr-ai (default: qwen/qwen3-vl-30b)")
+    parser.add_argument("--vision-model", type=str, default=default_vision, help=f"Modèle Vision pour les images (default: {default_vision})")
+    parser.add_argument("--pdf-provider", type=str, default=default_pdf_provider, help=f"Provider pour pdf-ocr-ai (default: {default_pdf_provider})")
+    parser.add_argument("--pdf-model", type=str, default=default_pdf_model, help=f"Modèle pour pdf-ocr-ai (default: {default_pdf_model})")
     
     args = parser.parse_args()
     
@@ -303,6 +398,14 @@ def main():
     
     if not check_tesseract_installed():
         sys.exit(1)
+
+    if not check_ollama_available():
+        sys.exit(1)
+    
+    # Vérification des modèles (warning seulement)
+    check_model_available(VISION_MODEL)
+    if PDF_PROVIDER == "ollama":
+        check_model_available(PDF_MODEL)
         
     setup_directories()
     run_docling_conversion()

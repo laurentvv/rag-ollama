@@ -1,0 +1,17 @@
+# RAG-Ollama Configuration
+# You can override these values with CLI arguments.
+
+# Document Preparation
+prepare:
+  vision_model: "gemma3:12b"
+  pdf_provider: "ollama"
+  pdf_model: "gemma3:12b"
+  # Default directories (optional, usually better to specify via CLI or relative paths)
+  # input_dir: "./sources"
+  # output_dir: "./processed_md"
+
+# Chat & Indexing
+chat:
+  llm_model: "gemma3:12b"
+  embedding_model: "embeddinggemma:latest"
+  # db_path: "./chroma_db"

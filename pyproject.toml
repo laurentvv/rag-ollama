@@ -3,7 +3,7 @@ name = "rag-ollama"
 version = "0.1.0"
 description = "RAG system with Ollama"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 dependencies = [
     "docling",
     "langchain",
@@ -20,6 +20,9 @@ dependencies = [
     "markdown",
     "openai",
     "requests",
+    "ollama",
+    "pdf-ocr-ai",
+    "PyYAML",
 ]
 
 [project.scripts]
@@ -32,6 +35,9 @@ rag-ollama = "rag_ollama.rag:main"
 dev-dependencies = [
     "pytest",
 ]
+
+[tool.uv.sources]
+pdf-ocr-ai = { git = "https://github.com/laurentvv/pdf-ocr-ai" }
 
 [build-system]
 requires = ["hatchling"]

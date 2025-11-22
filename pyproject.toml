@@ -13,7 +13,7 @@ dependencies = [
     "sentence-transformers",
     "unstructured",
     "langchain-text-splitters",
-    # "langchain-classic", # Verify if this is needed or a typo, keeping it if it was in requirements
+    "langchain-core",
     "rank_bm25",
     "langchain-chroma",
     "langchain-ollama",
@@ -23,6 +23,7 @@ dependencies = [
     "ollama",
     "pdf-ocr-ai",
     "PyYAML",
+    "tqdm",
 ]
 
 [project.scripts]

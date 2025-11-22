@@ -2,73 +2,61 @@ import argparse
 import shutil
 import sys
 from pathlib import Path
-import subprocess
-
-# Configuration
-# Note: This should match prepare_documents.py
+from .config import RAGConfig
+from .prepare_documents import process_document, PROCESSORS
+from .rag import load_or_initialize_vector_db, update_vector_db_incrementally
+from .utils.logging import logger
+from .utils.exceptions import RAGException
 
 def main():
-    parser = argparse.ArgumentParser(description="Ajouter un document au système RAG.")
-    parser.add_argument("file_path", type=Path, help="Chemin vers le fichier à ajouter.")
-    parser.add_argument("--source-dir", type=Path, required=True, help="Dossier source où copier le fichier")
-    parser.add_argument("--processed-dir", type=Path, required=True, help="Dossier de sortie pour les fichiers Markdown")
-    parser.add_argument("--db", type=Path, required=True, help="Chemin de la base de données Chroma")
-    
-    args = parser.parse_args()
-    
-    file_path = args.file_path
-    target_dir = args.source_dir
-    
-    if not file_path.exists():
-        print(f"Erreur: Le fichier {file_path} n'existe pas.")
-        sys.exit(1)
-        
-    print(f"Ajout du document : {file_path.name}")
-    
-    # 1. Copie vers le dossier source
-    if not target_dir.exists():
-        print(f"Création du dossier cible : {target_dir}")
-        target_dir.mkdir(parents=True, exist_ok=True)
-        
-    target_path = target_dir / file_path.name
-    
     try:
-        shutil.copy2(file_path, target_path)
-        print(f"✅ Fichier copié vers {target_path}")
+        parser = argparse.ArgumentParser(description="Ajouter un document au système RAG.")
+        parser.add_argument("file_path", type=Path, help="Chemin vers le fichier à ajouter.")
+        parser.add_argument("--source-dir", type=Path, required=True, help="Dossier source où copier le fichier")
+        parser.add_argument("--processed-dir", type=Path, default="./processed_md", help="Dossier de sortie pour les fichiers Markdown")
+        parser.add_argument("--db", type=Path, default="./chroma_db", help="Chemin de la base de données Chroma")
+        
+        args = parser.parse_args()
+        
+        file_to_add = args.file_path
+        if not file_to_add.exists():
+            raise RAGException(f"Le fichier {file_to_add} n'existe pas.")
+
+        config = RAGConfig(
+            source_dir=args.source_dir.resolve(),
+            processed_dir=args.processed_dir.resolve(),
+            db_path=args.db.resolve()
+        )
+
+        logger.info(f"Ajout du document : {file_to_add.name}")
+        
+        # 1. Copie vers le dossier source
+        config.source_dir.mkdir(parents=True, exist_ok=True)
+        target_path = config.source_dir / file_to_add.name
+        
+        try:
+            shutil.copy2(file_to_add, target_path)
+            logger.info(f"✅ Fichier copié vers {target_path}")
+        except Exception as e:
+            raise RAGException(f"Erreur lors de la copie : {e}")
+
+        # 2. Exécution du traitement
+        logger.info("--- Lancement du prétraitement ---")
+        process_document(target_path, config, PROCESSORS)
+
+        # 3. Indexation
+        logger.info("--- Mise à jour de l'index ---")
+        vector_db = load_or_initialize_vector_db(config)
+        update_vector_db_incrementally(vector_db, config)
+
+        logger.info("✅ Document ajouté et indexé avec succès !")
+
+    except RAGException as e:
+        logger.error(f"Erreur lors de l'ajout du document: {e}")
+        sys.exit(1)
     except Exception as e:
-        print(f"Erreur lors de la copie : {e}")
+        logger.error(f"Une erreur inattendue est survenue: {e}")
         sys.exit(1)
-        
-    # 2. Exécution de prepare_documents.py
-    print("\n--- Lancement du prétraitement ---")
-    try:
-        # On appelle rag-prepare avec les arguments
-        cmd_prepare = [
-            "uv", "run", "rag-prepare",
-            "--input", str(target_dir),
-            "--output", str(args.processed_dir)
-        ]
-        subprocess.run(cmd_prepare, check=True)
-    except subprocess.CalledProcessError:
-        print("Erreur lors du prétraitement.")
-        sys.exit(1)
-        
-    # 3. Indexation (rag_ollama_new.py -> rag.py)
-    print("\n--- Mise à jour de l'index ---")
-    try:
-        # On appelle rag-chat avec les arguments
-        cmd_chat = [
-            "uv", "run", "rag-chat",
-            "--index-only",
-            "--input", str(args.processed_dir),
-            "--db", str(args.db)
-        ]
-        subprocess.run(cmd_chat, check=True)
-    except subprocess.CalledProcessError:
-        print("Erreur lors de l'indexation.")
-        sys.exit(1)
-        
-    print("\n✅ Document ajouté et indexé avec succès !")
 
 if __name__ == "__main__":
     main()

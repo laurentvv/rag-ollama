@@ -1,9 +1,9 @@
 # 🧠 RAG-Ollama
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
-![Ollama](https://img.shields.io/badge/Ollama-Integrated-orange)
-![LangChain](https://img.shields.io/badge/LangChain-Powered-green)
-![License](https://img.shields.io/badge/License-MIT-purple)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
+[![Ollama](https://img.shields.io/badge/Ollama-Integrated-orange)](https://ollama.com/)
+[![LangChain](https://img.shields.io/badge/LangChain-Powered-green)](https://www.langchain.com/)
+[![License](https://img.shields.io/badge/License-MIT-purple)](https://github.com/laurentvv/rag-ollama/blob/main/LICENSE)
 
 **Advanced Local RAG system with AI-Powered OCR and Hybrid Search.**
 *Powered by Ollama, ChromaDB, and Vision Language Models.*
@@ -44,7 +44,7 @@ uvx --from git+https://github.com/laurentvv/rag-ollama rag-prepare --input "C:\M
 *   **Why?** The system needs to "learn" your documents by converting them into mathematical vectors (indexing) and storing them in a local database (ChromaDB). This allows it to instantly find the most relevant information when you ask a question.
 
 ```bash
-uvx --from git+https://github.com/laurentvv/rag-ollama rag-ollama --input "./processed_md" --db "./chroma_db"
+uvx --from git+https://github.com/laurentvv/rag-ollama rag-chat --input "./processed_md" --db "./chroma_db"
 ```
 
 ### ⚡ Quick Add (Single File)
@@ -52,8 +52,13 @@ To add a single document without reprocessing everything:
 
 ```bash
 uvx --from git+https://github.com/laurentvv/rag-ollama rag-add "C:\MyDocs\new_file.pdf" --source-dir "C:\MyDocs" --processed-dir "./processed_md" --db "./chroma_db"
+
+### `rag-prepare` Arguments
+| Argument | Required | Default | Description |
+| :--- | :---: | :--- | :--- |
+| `--input <dir>` | ✅ | - | Source directory containing documents. |
+| `--output <dir>` | ✅ | - | Output directory for processed Markdown. |
 | `--vision-model <name>` | ❌ | `llama3.2-vision` | Vision model to use in Ollama for images. |
-| `--pdf-provider <name>` | ❌ | `ollama` | Provider for PDF OCR (currently supports `ollama`). |
 | `--pdf-model <name>` | ❌ | `llama3.2-vision` | Model for PDF OCR. |
 
 ### `rag-chat` (Chat & Index)

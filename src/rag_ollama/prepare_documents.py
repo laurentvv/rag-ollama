@@ -8,19 +8,14 @@ import subprocess
 import yaml
 from .config import RAGConfig
 from .utils.logging import logger
-from .utils.exceptions import RAGException, TesseractError, OllamaError, ModelUnavailableError, ProcessingError
+from .utils.exceptions import RAGException, OllamaError, ModelUnavailableError, ProcessingError
 from .processors.base import DocumentProcessor
 from .processors.pdf import PDFProcessor
 from .processors.image import ImageProcessor
 from .processors.docling import DoclingProcessor
 
 # ... (les fonctions de vérification restent les mêmes) ...
-def check_tesseract_installed():
-    try:
-        subprocess.run(["tesseract", "--version"], capture_output=True, check=True, text=True)
-        logger.info("✅ Tesseract-OCR est correctement installé.")
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        raise TesseractError("Tesseract-OCR non trouvé. Veuillez l'installer.")
+
 
 def check_ollama_available():
     try:
@@ -101,7 +96,6 @@ def main():
         )
 
         # Vérifications initiales
-        check_tesseract_installed()
         check_ollama_available()
         check_model_available(config.vision_model)
         check_model_available(config.pdf_model)
@@ -122,7 +116,7 @@ def main():
 
         logger.info("✅ Prétraitement de tous les documents terminé.")
 
-    except (RAGException, TesseractError, OllamaError, ModelUnavailableError) as e:
+    except (RAGException, OllamaError, ModelUnavailableError) as e:
         logger.error(f"Erreur de configuration ou système: {e}")
         sys.exit(1)
     except Exception as e:

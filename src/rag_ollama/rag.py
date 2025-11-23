@@ -4,7 +4,7 @@ import yaml
 from langchain_community.document_loaders import UnstructuredMarkdownLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_ollama import OllamaEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_community.llms import Ollama
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
@@ -42,7 +42,7 @@ def update_vector_db_incrementally(vector_db: Chroma, config: RAGConfig):
         file_hash = get_file_hash(file_path)
         
         # Vérifier si ce hash existe déjà pour ce fichier
-        existing_docs = vector_db.get(where={"source": str(file_path), "hash": file_hash})
+        existing_docs = vector_db.get(where={"$and": [{"source": str(file_path)}, {"hash": file_hash}]})
         if existing_docs and existing_docs['ids']:
             continue # Fichier déjà indexé et non modifié
 

@@ -8,7 +8,7 @@
 
 ## Documentation Improvements
 - [ ] **Explain `uvx` parameters**: Detail what each argument (`--input`, `--output`, `--db`, etc.) does in the `README.md`.
-- [ ] **Vision Model Details**: Add a dedicated section explaining the default vision model https://ollama.com/library/qwen3-vlhttps://ollama.com/library/qwen3-vl : qwen3-vl:8b or qwen3-vl:30b and how `pdf-ocr-ai` is used.
+- [ ] **Vision Model Details**: Add a dedicated section explaining the default vision model https://ollama.com/library/qwen3-vlhttps://ollama.com/library/qwen3-vl : qwen3-vl:8b or qwen3-vl:30b or gemma3:12b and how `pdf-ocr-ai` is used.
 - [ ] **Workflow Clarity**: Ensure the "Workflow" section clearly explains *why* each step is needed.
 
 ## Future Improvements

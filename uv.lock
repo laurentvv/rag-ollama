@@ -2352,7 +2352,7 @@ wheels = [
 [[package]]
 name = "pdf-ocr-ai"
 version = "1.0.0"
-source = { git = "https://github.com/laurentvv/pdf-ocr-ai#cad279b2d13b79bb951ac1fac39cd3d039523e85" }
+source = { git = "https://github.com/laurentvv/pdf-ocr-ai#b623c4b0d134d0b5af6e23ea9d0689922ea0e487" }
 dependencies = [
     { name = "openai" },
     { name = "pymupdf" },
@@ -3104,6 +3104,7 @@ dependencies = [
     { name = "langchain" },
     { name = "langchain-chroma" },
     { name = "langchain-community" },
+    { name = "langchain-core" },
     { name = "langchain-ollama" },
     { name = "langchain-text-splitters" },
     { name = "markdown" },
@@ -3115,6 +3116,7 @@ dependencies = [
     { name = "rank-bm25" },
     { name = "requests" },
     { name = "sentence-transformers" },
+    { name = "tqdm" },
     { name = "unstructured" },
 ]
 
@@ -3130,6 +3132,7 @@ requires-dist = [
     { name = "langchain" },
     { name = "langchain-chroma" },
     { name = "langchain-community" },
+    { name = "langchain-core" },
     { name = "langchain-ollama" },
     { name = "langchain-text-splitters" },
     { name = "markdown" },
@@ -3141,6 +3144,7 @@ requires-dist = [
     { name = "rank-bm25" },
     { name = "requests" },
     { name = "sentence-transformers" },
+    { name = "tqdm" },
     { name = "unstructured" },
 ]
 

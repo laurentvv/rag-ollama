@@ -75,7 +75,7 @@ Thumbs.db
 chroma_db/
 
 # Processed files
-processed_md/
+processed_md*
 
 # Benchmark output
 benchmark_output/
